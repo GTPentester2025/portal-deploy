@@ -432,6 +432,27 @@
     footer.foot .mono { font-family: var(--mono); }
     footer.foot .dot { color: var(--border-2); }
 
+    /* ── Full-width API card (coming soon) ── */
+    .card--wide { width: 100%; }
+    .card--soon {
+      border-style: dashed;
+      background: linear-gradient(180deg, rgba(26, 21, 13, 0.6), rgba(15, 12, 8, 0.6));
+      cursor: default;
+    }
+    .card--soon .card-icon {
+      color: var(--soon);
+      background: radial-gradient(120% 120% at 30% 20%, rgba(168, 149, 114, 0.16), rgba(168, 149, 114, 0.03));
+    }
+    .card--soon .card-body h3 { color: var(--fg-muted); }
+    .card--soon .card-cta { color: var(--soon); }
+    /* no lift/glow on a non-interactive coming-soon card */
+    .card--soon:hover, .card--soon:focus-visible {
+      transform: none;
+      border-color: var(--border);
+      box-shadow: none;
+    }
+    .card--soon:hover::before, .card--soon:focus-visible::before { opacity: 0; }
+
     /* ── Responsive: stack the pipeline vertically ── */
     @media (max-width: 900px) {
       .pipeline { flex-direction: column; }
@@ -643,6 +664,35 @@
             </span>
           </a>
 
+        </div>
+      </section>
+
+      <!-- ── APIs ── -->
+      <section class="section" aria-labelledby="sec-apis">
+        <div class="section-head">
+          <span class="eyebrow"><span class="kicker">APIs</span></span>
+          <h2 id="sec-apis">Services</h2>
+          <span class="rule" aria-hidden="true"></span>
+          <span class="count">1 endpoint</span>
+        </div>
+
+        <div class="card card--wide card--soon" role="group" aria-label="GenAI Dashboard API (coming soon)" aria-disabled="true">
+          <div class="card-top">
+            <span class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1" />
+                <path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 1 2 2 2 2 0 0 1-2 2v4a2 2 0 0 1-2 2h-1" />
+              </svg>
+            </span>
+            <span class="badge badge--soon"><span class="dot" aria-hidden="true"></span>Coming soon</span>
+          </div>
+          <div class="card-body">
+            <h3>GenAI Dashboard API</h3>
+            <p>Programmatic access to the GenAI dashboards — query findings, correlations and posture data over REST.</p>
+          </div>
+          <span class="card-cta">In development
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </span>
         </div>
       </section>
 
