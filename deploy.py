@@ -81,7 +81,7 @@ GOPHISH_SRC     = PROJECT_ROOT / "gophish_support"
 GOPHISH_APP_DIR = Path("/opt/gophish-support")           # deployed code + venv
 GOPHISH_VENV    = GOPHISH_APP_DIR / "venv"
 GOPHISH_SERVICE = Path("/etc/systemd/system/gophish-support.service")
-GOPHISH_BIND    = "127.0.0.1:5000"
+GOPHISH_BIND    = "127.0.0.1:5050"   # 5000 is taken by the host agent on the VM
 
 WEB_ROOT      = Path("/var/www/portal")
 NGINX_CONF    = Path("/etc/nginx/conf.d/portal.conf")
