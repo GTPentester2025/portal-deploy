@@ -18,8 +18,18 @@ Support is a Flask backend: deploy.py installs it into /opt/gophish-support,
 runs it under gunicorn as a systemd service on 127.0.0.1:5000, and nginx
 reverse-proxies /gophish-support/ to it.
 
-Copy this project to the target RHEL 9.8 VM and run:
+Layout — deploy.py + portal/ ship together (the "portal-deploy" repo); the other
+app folders are cloned as siblings. deploy.py finds each app whether it sits next
+to deploy.py or one level up, so nothing needs copying after cloning. Typical VM:
 
+    ~/apps/
+      portal-deploy/   ← clone of portal-deploy (contains deploy.py + portal/)
+      awareness-latest/  training-UAT/  gophish_support/
+      Userbase-Automation/  Panorays_Intel471_Censys_Dashboard_Wireframe/  PRP-UAT/
+
+Clone the repos as siblings, then run in place (no copying):
+
+    cd ~/apps/portal-deploy
     sudo python3 deploy.py
 
 What it does (10 steps):
@@ -50,34 +60,53 @@ import urllib.request
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent.resolve()
+# deploy.py + portal/ ship together in the "portal-deploy" repo. The other app
+# folders are cloned as siblings. So an app dir may live either next to deploy.py
+# (flat layout) OR one level up (deploy.py inside portal-deploy/, apps in parent).
+# _find_dir() locates each app across those candidate roots so nothing has to be
+# copied around after cloning.
+SCRIPT_DIR = Path(__file__).parent.resolve()
+_APP_ROOTS = [SCRIPT_DIR, SCRIPT_DIR.parent]
 
-# Home launcher (this repo ships portal/index.html + portal/health.html).
-PORTAL_DIR = PROJECT_ROOT / "portal"
+# Used only for messages / "project root" display.
+PROJECT_ROOT = SCRIPT_DIR
+
+
+def _find_dir(*names: str, roots: list[Path] = _APP_ROOTS) -> Path:
+    """First existing <root>/<name> across candidate roots (roots outermost loop,
+    so SCRIPT_DIR wins over its parent). Falls back to roots[0]/names[0] for a
+    sensible path in 'not found' error messages."""
+    for root in roots:
+        for name in names:
+            candidate = root / name
+            if candidate.is_dir():
+                return candidate
+    return roots[0] / names[0]
+
+
+# Home launcher — always the copy bundled beside deploy.py (portal-deploy/portal),
+# never a stale sibling; SCRIPT_DIR is tried first.
+PORTAL_DIR = _find_dir("portal")
 
 # Newsletter (Awareness) — an SPA with an npm build → dist/.
-NEWSLETTER_SRC  = PROJECT_ROOT / "awareness-latest"
+NEWSLETTER_SRC  = _find_dir("awareness-latest")
 NEWSLETTER_DIST = NEWSLETTER_SRC / "dist"
 
 # PRP Charts (TPRM) — self-contained static app (vendor libs load in the browser).
-PRP_SRC = PROJECT_ROOT / "PRP-UAT"
+PRP_SRC = _find_dir("PRP-UAT")
 
 # Training Status Tracking (Awareness) — static browser-only dashboard.
-TRAINING_SRC = PROJECT_ROOT / "training-UAT"
+TRAINING_SRC = _find_dir("training-UAT")
 
 # Userbase Automation (Awareness) — browser-only static app; entry lives in web/.
 # Accept either the git repo name ("Userbase-Automation") or the spaced folder name.
-USERBASE_SRC = next(
-    (PROJECT_ROOT / n for n in ("Userbase-Automation", "Userbase Automation")
-     if (PROJECT_ROOT / n).is_dir()),
-    PROJECT_ROOT / "Userbase-Automation",
-)
+USERBASE_SRC = _find_dir("Userbase-Automation", "Userbase Automation")
 
 # Panorays/Intel 471/Censys dashboard wireframe (TPRM) — static (index.html + support.js).
-PANORAYS_SRC = PROJECT_ROOT / "Panorays_Intel471_Censys_Dashboard_Wireframe"
+PANORAYS_SRC = _find_dir("Panorays_Intel471_Censys_Dashboard_Wireframe")
 
 # Gophish Support (Awareness) — Flask backend run under gunicorn + systemd.
-GOPHISH_SRC     = PROJECT_ROOT / "gophish_support"
+GOPHISH_SRC     = _find_dir("gophish_support")
 GOPHISH_APP_DIR = Path("/opt/gophish-support")           # deployed code + venv
 GOPHISH_VENV    = GOPHISH_APP_DIR / "venv"
 GOPHISH_SERVICE = Path("/etc/systemd/system/gophish-support.service")
@@ -210,9 +239,15 @@ def check_project() -> None:
             "Project layout incomplete — copy the full project to this VM.\n    "
             + "\n    ".join(problems)
         )
-    ok(f"Project root: {PROJECT_ROOT}")
-    ok("Found: portal/, awareness-latest/, PRP-UAT/, training-UAT/, "
-       "gophish_support/, Userbase Automation/")
+    ok(f"deploy.py dir: {SCRIPT_DIR}")
+    info(f"portal    → {PORTAL_DIR}")
+    info(f"newsletter→ {NEWSLETTER_SRC}")
+    info(f"training  → {TRAINING_SRC}")
+    info(f"gophish   → {GOPHISH_SRC}")
+    info(f"userbase  → {USERBASE_SRC}")
+    info(f"panorays  → {PANORAYS_SRC}")
+    info(f"prp       → {PRP_SRC}")
+    ok("All app folders located")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2 — Node.js 20
