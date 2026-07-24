@@ -138,19 +138,23 @@
       margin-bottom: 20px;
     }
     .eyebrow { display: inline-flex; align-items: center; gap: 9px; }
+    /* Category (e.g. "Awareness") is the prominent heading; the descriptor is small. */
     .eyebrow .kicker {
-      font-family: var(--mono);
-      font-size: 0.7rem;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
+      font-family: var(--font);
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      text-transform: none;
       color: var(--gold);
     }
     .section-head h2 {
       margin: 0;
-      font-size: 1.02rem;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--fg-dim);
     }
     .section-head .rule {
       flex: 1;
@@ -579,7 +583,7 @@
           <span class="eyebrow"><span class="kicker">Awareness</span></span>
           <h2 id="sec-awareness">Content &amp; Tracking</h2>
           <span class="rule" aria-hidden="true"></span>
-          <span class="count">2 tools</span>
+          <span class="count">3 tools</span>
         </div>
         <div class="grid">
 
@@ -617,6 +621,26 @@
             <div class="card-body">
               <h3>Training Status Tracking</h3>
               <p>Track training completion and compliance status.</p>
+            </div>
+            <span class="card-cta">Open
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
+          <a class="card" href="/poster-app/" aria-label="Open Poster app (live)">
+            <div class="card-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.6" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </span>
+              <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="card-body">
+              <h3>Poster app</h3>
+              <p>AI-generate security-awareness posters — agent pipeline, canvas editor, 9-language translation.</p>
             </div>
             <span class="card-cta">Open
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>

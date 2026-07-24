@@ -2,16 +2,21 @@
 """
 deploy.py — Full deployment of the Security & Risk Portal on RHEL 9.8.
 
-A single nginx site that serves a home/launcher page plus six internal tools:
+A single nginx site that serves a home/launcher page plus seven internal tools:
 
     /                              Home launcher (2 categories: Awareness, TPRM)
     /newsletter/                   Awareness → "Newsletter"               (awareness-latest)
     /training-status/              Awareness → "Training Status Tracking" (training-UAT)
     /gophish-support/              Awareness → "Gophish Support"          (gophish_support)
     /userbase-automation/          Awareness → "Userbase Automation"      (Userbase Automation)
+    /poster-app/                   Awareness → "Poster app"               (poster-app)
     /prp-charts/                   TPRM      → "PRP Charts"               (PRP-UAT)
     /panorays-intel471-censys/     TPRM      → "Panorays/Intel 471/Censys wireframe"
                                               (Panorays_Intel471_Censys_Dashboard_Wireframe)
+
+Two of the tools are backends run as systemd services and reverse-proxied:
+Gophish Support (Flask/gunicorn on 5050) and Poster app (Node/Express on 4180,
+token-gated — deploy.py prints the tokenized first-visit URL).
 
 Four of the tools are static (or SPA) files served directly by nginx. Gophish
 Support is a Flask backend: deploy.py installs it into /opt/gophish-support,
@@ -111,6 +116,13 @@ GOPHISH_APP_DIR = Path("/opt/gophish-support")           # deployed code + venv
 GOPHISH_VENV    = GOPHISH_APP_DIR / "venv"
 GOPHISH_SERVICE = Path("/etc/systemd/system/gophish-support.service")
 GOPHISH_BIND    = "127.0.0.1:5050"   # 5000 is taken by the host agent on the VM
+
+# Poster app (Awareness) — Node/Express backend run as a systemd service.
+POSTER_SRC     = _find_dir("poster-app")
+POSTER_APP_DIR = Path("/opt/poster-app")             # deployed code + node_modules
+POSTER_SERVICE = Path("/etc/systemd/system/poster-app.service")
+POSTER_PORT    = 4180                                 # its default (POSTER_APP_PORT)
+POSTER_BIND    = f"127.0.0.1:{POSTER_PORT}"
 
 WEB_ROOT      = Path("/var/www/portal")
 NGINX_CONF    = Path("/etc/nginx/conf.d/portal.conf")
@@ -233,6 +245,12 @@ def check_project() -> None:
         problems.append(
             f"Panorays wireframe index.html missing: {PANORAYS_SRC / 'index.html'}"
         )
+
+    # Poster app (Node backend).
+    if not (POSTER_SRC / "backend" / "server.js").exists():
+        problems.append(f"Poster app server missing: {POSTER_SRC / 'backend' / 'server.js'}")
+    elif not (POSTER_SRC / "package.json").exists():
+        problems.append(f"Poster app package.json missing: {POSTER_SRC / 'package.json'}")
 
     if problems:
         die(
@@ -564,12 +582,135 @@ def deploy_gophish_backend() -> bool:
     for _ in range(6):
         r = run(["systemctl", "is-active", "gophish-support"], capture=True, check=False)
         if r.stdout.strip() == "active":
-            ok("Gophish Support service running (127.0.0.1:5000)")
+            ok(f"Gophish Support service running ({GOPHISH_BIND})")
             return True
         time.sleep(1)
     warn("Gophish Support service did not become active.")
     warn("Check:  journalctl -u gophish-support -n 50")
     return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 6b — Poster app backend (Node/Express → systemd)
+# ─────────────────────────────────────────────────────────────────────────────
+# Files/dirs that must NOT be copied into /opt (deps, dev, or runtime state).
+_POSTER_EXCLUDE = {"node_modules", ".git", "tests", ".playwright-mcp"}
+
+
+def _copy_poster_code() -> None:
+    """Mirror poster-app source into POSTER_APP_DIR, excluding deps/dev/runtime.
+
+    Runtime state (the SQLite db + session token) lives under data/ and is
+    regenerated on first run — never copy the local dev copies over.
+    """
+    POSTER_APP_DIR.mkdir(parents=True, exist_ok=True)
+    if shutil.which("rsync"):
+        args = ["rsync", "-a", "--delete"]
+        for name in _POSTER_EXCLUDE:
+            args += ["--exclude", name]
+        # runtime state under data/ (keep data/article-seed.js and other source)
+        for pat in ("data/*.sqlite", "data/*.sqlite-shm", "data/*.sqlite-wal",
+                    "data/session-token", "image-library/assets"):
+            args += ["--exclude", pat]
+        run(args + [f"{POSTER_SRC}/", f"{POSTER_APP_DIR}/"])
+    else:
+        ignore = shutil.ignore_patterns(*_POSTER_EXCLUDE,
+                                        "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
+                                        "session-token")
+        for item in POSTER_SRC.iterdir():
+            if item.name in _POSTER_EXCLUDE:
+                continue
+            dst = POSTER_APP_DIR / item.name
+            if item.is_dir():
+                if dst.exists():
+                    shutil.rmtree(dst)
+                shutil.copytree(item, dst, ignore=ignore)
+            else:
+                shutil.copy2(item, dst)
+
+
+def _write_poster_service(node_bin: str) -> None:
+    unit = f"""\
+# Poster app — AI security-awareness poster generator (generated by deploy.py)
+[Unit]
+Description=Poster app (AI awareness poster generator)
+After=network.target
+
+[Service]
+Type=simple
+User=nginx
+Group=nginx
+WorkingDirectory={POSTER_APP_DIR}
+Environment=NODE_ENV=production
+Environment=POSTER_APP_PORT={POSTER_PORT}
+ExecStart={node_bin} backend/server.js
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+"""
+    POSTER_SERVICE.write_text(unit)
+    ok(f"systemd unit written: {POSTER_SERVICE}")
+
+
+def deploy_poster_backend(node_ok: bool) -> bool:
+    """Deploy + (re)start the poster-app Node service. Returns True if healthy."""
+    if not node_ok:
+        warn("Node.js unavailable — skipping poster-app backend.")
+        return False
+
+    node_bin = shutil.which("node")
+    if not node_bin:
+        warn("node not found on PATH — skipping poster-app backend.")
+        return False
+
+    info(f"Deploying poster-app code → {POSTER_APP_DIR} …")
+    _copy_poster_code()
+
+    info("Installing poster-app dependencies (npm) — includes native better-sqlite3 …")
+    r = run(["npm", "install", "--omit=dev", "--no-audit", "--no-fund"],
+            cwd=POSTER_APP_DIR, capture=True, check=False)
+    if r.returncode != 0:
+        # retry without --omit=dev in case a runtime dep is misclassified
+        r2 = run(["npm", "install", "--no-audit", "--no-fund"],
+                 cwd=POSTER_APP_DIR, capture=True, check=False)
+        if r2.returncode != 0:
+            warn("npm install failed for poster-app — backend will not start.")
+            if r2.stderr:
+                print(r2.stderr[-1500:])
+            warn("If offline, better-sqlite3 needs a prebuilt binary or gcc/make/python3.")
+            return False
+    ok("poster-app dependencies installed")
+
+    # nginx user owns the tree (writes data/ SQLite db + session token at runtime).
+    run(["chown", "-R", "nginx:nginx", str(POSTER_APP_DIR)])
+    run(["chmod", "-R", "u=rwX,go=rX", str(POSTER_APP_DIR)])
+
+    _write_poster_service(node_bin)
+
+    run(["systemctl", "daemon-reload"])
+    run(["systemctl", "enable", "poster-app"], capture=True, check=False)
+    run(["systemctl", "restart", "poster-app"], check=False)
+
+    for _ in range(8):
+        r = run(["systemctl", "is-active", "poster-app"], capture=True, check=False)
+        if r.stdout.strip() == "active":
+            ok(f"Poster app service running ({POSTER_BIND})")
+            return True
+        time.sleep(1)
+    warn("Poster app service did not become active.")
+    warn("Check:  journalctl -u poster-app -n 50")
+    return False
+
+
+def _poster_token() -> str | None:
+    """Read the generated session token (for the tokenized first-visit URL)."""
+    tok = POSTER_APP_DIR / "data" / "session-token"
+    try:
+        return tok.read_text().strip()
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -696,6 +837,34 @@ server {
         try_files $uri $uri/ =404;
     }
 
+    # ── Poster app (Awareness) — Node service via reverse proxy ───────────────
+    #    UI at /poster-app/ (relative assets); its browser code calls absolute
+    #    /api/… so /api/ is proxied to the same backend (incl. the SSE stream).
+    #    Token still required on first visit: /poster-app/?token=<session-token>.
+    location = /poster-app { return 301 /poster-app/; }
+    location ^~ /poster-app/ {
+        proxy_pass http://@@POSTER_BIND@@/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 900s;
+        proxy_send_timeout 900s;
+    }
+    location ^~ /api/ {
+        proxy_pass http://@@POSTER_BIND@@;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;                # /api/events/stream is Server-Sent Events
+        proxy_read_timeout 3600s;           # pipeline runs are minutes of model calls
+        proxy_send_timeout 3600s;
+    }
+
     # ── Cache by file type ────────────────────────────────────────────────────
     location ~* \\.html?$ {
         add_header Cache-Control "public, max-age=0, must-revalidate" always;
@@ -759,6 +928,7 @@ def configure_nginx(newsletter_is_dist: bool) -> None:
         .replace("@@WEB_ROOT@@", str(WEB_ROOT))
         .replace("@@CSP@@", _CSP)
         .replace("@@GOPHISH_BIND@@", GOPHISH_BIND)
+        .replace("@@POSTER_BIND@@", POSTER_BIND)
         .replace("@@NEWSLETTER_DENY@@\n", (deny + "\n") if deny else "")
     )
 
@@ -857,10 +1027,23 @@ def health_check() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Success summary
 # ─────────────────────────────────────────────────────────────────────────────
-def print_success(newsletter_is_dist: bool, gophish_ok: bool) -> None:
+def print_success(newsletter_is_dist: bool, gophish_ok: bool, poster_ok: bool) -> None:
     ip = _server_ip()
     label = "dist/ (production build)" if newsletter_is_dist else "source (Node.js was unavailable)"
     gophish_note = "" if gophish_ok else _c("1;33", "  (service not active — see journalctl -u gophish-support)")
+    poster_note = "" if poster_ok else _c("1;33", "  (service not active — see journalctl -u poster-app)")
+
+    # Poster app is token-gated — surface the tokenized first-visit URL.
+    poster_token_line = ""
+    if poster_ok:
+        tok = _poster_token()
+        if tok:
+            poster_token_line = (
+                f"\n  Poster app — open ONCE to set the session cookie:\n"
+                f"    {_c('1;33', f'http://{ip}/poster-app/?token={tok}')}\n"
+                f"    (then configure an OpenAI API key in the Config tab to generate)"
+            )
+
     banner("Deployment complete")
     print(f"""
   Newsletter served from: {_c('1', label)}
@@ -874,27 +1057,31 @@ def print_success(newsletter_is_dist: bool, gophish_ok: bool) -> None:
     Training Status Tracking  →  {_c('1;36', f'http://{ip}/training-status/dashboard/')}
     Gophish Support           →  {_c('1;36', f'http://{ip}/gophish-support/')}{gophish_note}
     Userbase Automation       →  {_c('1;36', f'http://{ip}/userbase-automation/')}
+    Poster app                →  {_c('1;36', f'http://{ip}/poster-app/')}{poster_note}
     PRP Charts                →  {_c('1;36', f'http://{ip}/prp-charts/')}
     Panorays/Intel471/Censys  →  {_c('1;36', f'http://{ip}/panorays-intel471-censys/')}
+{poster_token_line}
 
   Useful commands:
     systemctl status nginx
     journalctl -u nginx -f
     systemctl reload nginx
     systemctl status gophish-support
-    journalctl -u gophish-support -f
+    systemctl status poster-app
+    journalctl -u poster-app -f
 
   Files:
     Web root  {WEB_ROOT}
     Config    {NGINX_CONF}
     Gophish   {GOPHISH_APP_DIR}  (service: gophish-support)
+    Poster    {POSTER_APP_DIR}  (service: poster-app)
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> None:
-    TOTAL = 10
+    TOTAL = 11
     banner("Security & Risk Portal — RHEL 9.8 Deployment Script")
 
     step(1, TOTAL, "Preflight checks")
@@ -927,20 +1114,23 @@ def main() -> None:
     step(6, TOTAL, "Deploy Gophish Support backend (gunicorn + systemd)")
     gophish_ok = deploy_gophish_backend()
 
-    step(7, TOTAL, "Configure nginx")
+    step(7, TOTAL, "Deploy Poster app backend (Node + systemd)")
+    poster_ok = deploy_poster_backend(node_ok)
+
+    step(8, TOTAL, "Configure nginx")
     configure_nginx(newsletter_is_dist)
 
-    step(8, TOTAL, "Fix SELinux file context")
+    step(9, TOTAL, "Fix SELinux file context")
     fix_selinux()
 
-    step(9, TOTAL, "Configure firewall")
+    step(10, TOTAL, "Configure firewall")
     configure_firewall()
 
-    step(10, TOTAL, "Start nginx + health check")
+    step(11, TOTAL, "Start nginx + health check")
     start_nginx()
     health_check()
 
-    print_success(newsletter_is_dist, gophish_ok)
+    print_success(newsletter_is_dist, gophish_ok, poster_ok)
 
 
 if __name__ == "__main__":
