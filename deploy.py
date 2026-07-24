@@ -66,7 +66,12 @@ PRP_SRC = PROJECT_ROOT / "PRP-UAT"
 TRAINING_SRC = PROJECT_ROOT / "training-UAT"
 
 # Userbase Automation (Awareness) — browser-only static app; entry lives in web/.
-USERBASE_SRC = PROJECT_ROOT / "Userbase Automation"
+# Accept either the git repo name ("Userbase-Automation") or the spaced folder name.
+USERBASE_SRC = next(
+    (PROJECT_ROOT / n for n in ("Userbase-Automation", "Userbase Automation")
+     if (PROJECT_ROOT / n).is_dir()),
+    PROJECT_ROOT / "Userbase-Automation",
+)
 
 # Panorays/Intel 471/Censys dashboard wireframe (TPRM) — static (index.html + support.js).
 PANORAYS_SRC = PROJECT_ROOT / "Panorays_Intel471_Censys_Dashboard_Wireframe"
