@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Security &amp; Risk portal — launcher for internal Awareness and TPRM tools." />
+  <meta name="color-scheme" content="dark" />
+  <title>Security &amp; Risk Portal — AB InBev</title>
+  <link rel="icon" href="ab-inbev-logo.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens — AB InBev: warm near-black + brand gold, cream secondary ── */
+    :root {
+      --bg:        #0a0806;
+      --bg-2:      #0f0c08;
+      --surface:   #14100a;
+      --surface-2: #1a150d;
+      --surface-3: #221b10;
+      --border:    #2e2617;
+      --border-2:  #40351f;
+
+      --fg:        #f6f2e8;
+      --fg-muted:  #c4b79b;
+      --fg-dim:    #897c64;
+
+      --gold:      #e8c810;   /* ABI brand gold — pipeline / brand accent */
+      --gold-2:    #f5da3a;   /* bright highlight */
+      --gold-deep: #c99a1e;
+      --cream:     #cdbf9f;   /* secondary tools (non-pipeline) */
+      --soon:      #a89572;   /* muted — coming soon */
+      --live:      #34d399;   /* green — live / operational status */
+
+      --ring:      #e8c810;
+      --radius:    14px;
+      --radius-lg: 20px;
+      --maxw:      1140px;
+      --card-min-h: 208px;   /* uniform card/stage height */
+      --ease:      cubic-bezier(0.22, 1, 0.36, 1);
+      --font:      "Fira Sans", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+      --mono:      "Fira Code", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: var(--font);
+      color: var(--fg);
+      background:
+        radial-gradient(900px 480px at 15% -8%, rgba(232, 200, 16, 0.11), transparent 60%),
+        radial-gradient(760px 460px at 100% 0%, rgba(245, 218, 58, 0.06), transparent 55%),
+        var(--bg);
+      background-attachment: fixed;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    /* faint technical grid overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(232, 200, 16, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(232, 200, 16, 0.03) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(1200px 700px at 50% 0%, #000 30%, transparent 85%);
+      z-index: 0;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: clamp(22px, 5vw, 52px) clamp(16px, 4vw, 34px) 72px;
+    }
+
+    /* ── Masthead ── */
+    header.masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+    }
+    .brand-logo {
+      flex: none;
+      height: 64px;
+      width: auto;
+      display: block;
+    }
+
+    .status-pill {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px;
+      border-radius: 999px;
+      background: rgba(52, 211, 153, 0.09);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      color: #a7ecce;
+      white-space: nowrap;
+    }
+    .status-pill .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+      animation: pulse 2.4s var(--ease) infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+      70%  { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+    }
+
+    /* ── Section heading ── */
+    .section { margin-bottom: 40px; }
+    .section:last-of-type { margin-bottom: 0; }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .eyebrow { display: inline-flex; align-items: center; gap: 9px; }
+    .eyebrow .kicker {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--fg);
+    }
+    .section-head .rule {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--border-2), transparent);
+    }
+    .section-head .count {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--fg-dim);
+    }
+    .section-sub {
+      margin: -8px 0 20px;
+      font-size: 0.86rem;
+      color: var(--fg-muted);
+      max-width: 62ch;
+    }
+
+    /* ═══ Featured pipeline ═══ */
+    .pipeline-panel {
+      position: relative;
+      padding: clamp(18px, 3vw, 28px);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(600px 300px at 0% 0%, rgba(232, 200, 16, 0.1), transparent 60%),
+        linear-gradient(180deg, var(--surface-2), var(--bg-2));
+      border: 1px solid var(--border-2);
+      box-shadow: 0 30px 70px -46px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(246, 242, 232, 0.04);
+      overflow: hidden;
+    }
+    .pipeline-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold-2), transparent);
+      opacity: 0.7;
+    }
+
+    .pipeline {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      flex-wrap: nowrap;
+    }
+
+    .stage {
+      position: relative;
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: var(--card-min-h);
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+      padding: 20px 18px 18px;
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, var(--surface), var(--surface-2));
+      border: 1px solid var(--border);
+      transition: transform 220ms var(--ease), border-color 220ms var(--ease), box-shadow 220ms var(--ease);
+    }
+    a.stage:hover, a.stage:focus-visible {
+      transform: translateY(-5px);
+      border-color: rgba(232, 200, 16, 0.5);
+      box-shadow: 0 22px 46px -24px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(232, 200, 16, 0.24);
+      outline: none;
+    }
+    a.stage:focus-visible {
+      box-shadow: 0 0 0 3px var(--ring), 0 22px 46px -24px rgba(0, 0, 0, 0.85);
+    }
+
+    .stage__top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stage__num {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+    }
+    a.stage:hover .stage__num, a.stage:focus-visible .stage__num { color: var(--gold); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .badge--live {
+      background: rgba(52, 211, 153, 0.11);
+      border: 1px solid rgba(52, 211, 153, 0.34);
+      color: #7fe6bd;
+    }
+    .badge--live .dot { background: var(--live); }
+    .badge--soon {
+      background: rgba(168, 149, 114, 0.1);
+      border: 1px solid rgba(168, 149, 114, 0.3);
+      color: #cbb89a;
+    }
+    .badge--soon .dot { background: var(--soon); }
+
+    .stage__icon {
+      width: 46px; height: 46px;
+      display: grid; place-items: center;
+      border-radius: 12px;
+      background: radial-gradient(120% 120% at 30% 20%, rgba(232, 200, 16, 0.2), rgba(245, 218, 58, 0.05));
+      border: 1px solid var(--border-2);
+      color: var(--gold);
+    }
+    .stage__icon svg { width: 25px; height: 25px; }
+
+    .stage__body { flex: 1; }
+    .stage__body h3 {
+      margin: 0 0 5px;
+      font-size: 1.04rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .stage__body p {
+      margin: 0;
+      font-size: 0.84rem;
+      color: var(--fg-muted);
+    }
+
+    .stage__cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--gold);
+      letter-spacing: 0.01em;
+    }
+    .stage__cta svg { width: 15px; height: 15px; transition: transform 220ms var(--ease); }
+    a.stage:hover .stage__cta svg, a.stage:focus-visible .stage__cta svg { transform: translateX(4px); }
+
+    /* coming-soon stage — subdued, non-interactive */
+    .stage--soon {
+      border-style: dashed;
+      background: linear-gradient(180deg, rgba(26, 21, 13, 0.6), rgba(15, 12, 8, 0.6));
+    }
+    .stage--soon .stage__icon {
+      color: var(--soon);
+      background: radial-gradient(120% 120% at 30% 20%, rgba(168, 149, 114, 0.16), rgba(168, 149, 114, 0.03));
+    }
+    .stage--soon .stage__body h3 { color: var(--fg-muted); }
+    .stage--soon .stage__cta { color: var(--soon); }
+
+    /* ── Connectors between stages ── */
+    .connector {
+      flex: 0 0 clamp(30px, 4.2vw, 62px);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .connector .track {
+      position: absolute;
+      left: 4px; right: 4px;
+      top: 50%;
+      height: 2px;
+      transform: translateY(-50%);
+      background: linear-gradient(90deg, rgba(232, 200, 16, 0.16), rgba(232, 200, 16, 0.58), rgba(232, 200, 16, 0.16));
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .connector .track::after {
+      content: "";
+      position: absolute;
+      top: 0; left: -40%;
+      width: 40%; height: 100%;
+      background: linear-gradient(90deg, transparent, var(--gold-2), transparent);
+      animation: flow 2.6s linear infinite;
+    }
+    @keyframes flow { 0% { left: -40%; } 100% { left: 100%; } }
+    .connector .arrow {
+      position: relative;
+      width: 20px; height: 20px;
+      color: var(--gold);
+      background: var(--bg-2);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      box-shadow: 0 0 0 4px var(--bg-2);
+    }
+    .connector--pending .track {
+      background: repeating-linear-gradient(90deg, rgba(168, 149, 114, 0.42) 0 6px, transparent 6px 12px);
+    }
+    .connector--pending .track::after { display: none; }
+    .connector--pending .arrow { color: var(--soon); }
+
+    /* ── Standard tool grid ── */
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+    }
+    .card {
+      position: relative;
+      min-height: var(--card-min-h);
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+      padding: 20px 20px 18px;
+      background: linear-gradient(180deg, var(--surface), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: transform 220ms var(--ease), border-color 220ms var(--ease), box-shadow 220ms var(--ease);
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cream), transparent);
+      opacity: 0;
+      transition: opacity 220ms var(--ease);
+    }
+    .card:hover, .card:focus-visible {
+      transform: translateY(-4px);
+      border-color: var(--border-2);
+      box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(205, 191, 159, 0.16);
+      outline: none;
+    }
+    .card:hover::before, .card:focus-visible::before { opacity: 0.75; }
+    .card:focus-visible { box-shadow: 0 0 0 3px var(--cream), 0 18px 40px -22px rgba(0, 0, 0, 0.85); }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-icon {
+      width: 42px; height: 42px;
+      display: grid; place-items: center;
+      border-radius: 11px;
+      background: radial-gradient(120% 120% at 30% 20%, rgba(205, 191, 159, 0.16), rgba(205, 191, 159, 0.04));
+      border: 1px solid var(--border-2);
+      color: var(--cream);
+    }
+    .card-icon svg { width: 23px; height: 23px; }
+    .card-body { flex: 1; }
+    .card-body h3 { margin: 0 0 5px; font-size: 1.02rem; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .card-title--code { font-family: var(--mono); font-size: 0.9rem; font-weight: 600; }
+    .card-body p { margin: 0; font-size: 0.84rem; color: var(--fg-muted); }
+    .card-cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.78rem; font-weight: 600; color: var(--cream);
+    }
+    .card-cta svg { width: 15px; height: 15px; transition: transform 220ms var(--ease); }
+    .card:hover .card-cta svg, .card:focus-visible .card-cta svg { transform: translateX(4px); }
+
+    /* ── Footer ── */
+    footer.foot {
+      margin-top: 56px;
+      padding-top: 22px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--fg-dim);
+    }
+    footer.foot .tagline {
+      color: var(--gold);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+    footer.foot .mono { font-family: var(--mono); }
+    footer.foot .dot { color: var(--border-2); }
+
+    /* ── Responsive: stack the pipeline vertically ── */
+    @media (max-width: 900px) {
+      .pipeline { flex-direction: column; }
+      .connector {
+        flex-basis: auto;
+        width: 100%;
+        height: 40px;
+      }
+      .connector .track {
+        left: 50%; right: auto; top: 6px; bottom: 6px;
+        width: 2px; height: auto;
+        transform: translateX(-50%);
+        background: linear-gradient(180deg, rgba(232, 200, 16, 0.16), rgba(232, 200, 16, 0.58), rgba(232, 200, 16, 0.16));
+      }
+      .connector .track::after {
+        left: 0; top: -40%;
+        width: 100%; height: 40%;
+        background: linear-gradient(180deg, transparent, var(--gold-2), transparent);
+        animation: flow-v 2.6s linear infinite;
+      }
+      @keyframes flow-v { 0% { top: -40%; } 100% { top: 100%; } }
+      .connector .arrow { transform: rotate(90deg); }
+      .connector--pending .track {
+        background: repeating-linear-gradient(180deg, rgba(168, 149, 114, 0.42) 0 6px, transparent 6px 12px);
+      }
+    }
+
+    @media (max-width: 560px) {
+      header.masthead { flex-wrap: wrap; }
+      .status-pill { order: 3; width: 100%; justify-content: center; }
+    }
+
+    /* ── Fixed corner mascot + review reminder ── */
+    .mascot {
+      position: fixed;
+      right: clamp(12px, 3vw, 26px);
+      bottom: clamp(12px, 3vw, 22px);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      pointer-events: none;      /* decorative — never blocks the page */
+    }
+    .mascot__note {
+      position: relative;
+      max-width: 232px;
+      background: linear-gradient(180deg, var(--surface-2), var(--bg-2));
+      border: 1px solid rgba(232, 200, 16, 0.4);
+      border-radius: 13px;
+      padding: 10px 13px;
+      font-size: 0.79rem;
+      line-height: 1.4;
+      color: var(--fg);
+      box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.9);
+    }
+    .mascot__note b { color: var(--gold); font-weight: 600; }
+    /* little speech tail pointing down toward the mascot */
+    .mascot__note::after {
+      content: "";
+      position: absolute;
+      right: 30px;
+      bottom: -7px;
+      width: 12px; height: 12px;
+      background: var(--bg-2);
+      border-right: 1px solid rgba(232, 200, 16, 0.4);
+      border-bottom: 1px solid rgba(232, 200, 16, 0.4);
+      transform: rotate(45deg);
+    }
+    .mascot__img {
+      width: clamp(112px, 13vw, 158px);
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.55));
+      animation: bob 4.5s var(--ease) infinite;
+    }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-7px); }
+    }
+
+    @media (max-width: 560px) {
+      .mascot__img { width: 92px; }
+      .mascot__note { max-width: 168px; font-size: 0.72rem; padding: 8px 10px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition-duration: 0.01ms !important; scroll-behavior: auto; }
+      .status-pill .live-dot { animation: none; }
+      .connector .track::after { animation: none; display: none; }
+      .mascot__img { animation: none; }
+      a.stage:hover, a.stage:focus-visible,
+      .card:hover, .card:focus-visible { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="masthead">
+      <img class="brand-logo" src="ab-inbev-logo.png" alt="AB InBev" width="357" height="118" />
+      <span class="status-pill" role="status">
+        <span class="live-dot" aria-hidden="true"></span>
+        All systems operational
+      </span>
+    </header>
+
+    <main>
+      <!-- ── Awareness ── -->
+      <section class="section" aria-labelledby="sec-awareness">
+        <div class="section-head">
+          <span class="eyebrow"><span class="kicker">Awareness</span></span>
+          <h2 id="sec-awareness">Content &amp; Tracking</h2>
+          <span class="rule" aria-hidden="true"></span>
+          <span class="count">2 tools</span>
+        </div>
+        <div class="grid">
+
+          <a class="card" href="/newsletter/" aria-label="Open Newsletter (live)">
+            <div class="card-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 5h13a1 1 0 0 1 1 1v12a1 1 0 0 0 1 1 1 1 0 0 0 1-1V8" />
+                  <path d="M4 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h15" />
+                  <path d="M7 9h7M7 13h7M7 17h4" />
+                </svg>
+              </span>
+              <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="card-body">
+              <h3>Newsletter</h3>
+              <p>Build and generate security awareness newsletters.</p>
+            </div>
+            <span class="card-cta">Open
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
+          <a class="card" href="/training-status/dashboard/" aria-label="Open Training Status Tracking (live)">
+            <div class="card-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" />
+                  <path d="m8.5 13 1.5 1.5 3-3M8.5 18l1.5 1.5 3-3" />
+                </svg>
+              </span>
+              <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="card-body">
+              <h3>Training Status Tracking</h3>
+              <p>Track training completion and compliance status.</p>
+            </div>
+            <span class="card-cta">Open
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
+        </div>
+      </section>
+
+      <!-- ── TPRM ── -->
+      <section class="section" aria-labelledby="sec-tprm">
+        <div class="section-head">
+          <span class="eyebrow"><span class="kicker">TPRM</span></span>
+          <h2 id="sec-tprm">Third-Party Risk</h2>
+          <span class="rule" aria-hidden="true"></span>
+          <span class="count">2 tools</span>
+        </div>
+        <div class="grid">
+
+          <a class="card" href="/prp-charts/" aria-label="Open PRP Charts (live)">
+            <div class="card-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+                  <rect x="7"  y="12" width="3" height="5" rx="0.5" />
+                  <rect x="12" y="8"  width="3" height="9" rx="0.5" />
+                  <rect x="17" y="5"  width="3" height="12" rx="0.5" />
+                </svg>
+              </span>
+              <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="card-body">
+              <h3>PRP Charts</h3>
+              <p>Third-party risk PRP assessment charts and automation.</p>
+            </div>
+            <span class="card-cta">Open
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
+          <a class="card" href="/panorays-intel471-censys/" aria-label="Open Panorays Intel 471 Censys Dashboard Wireframe (live)">
+            <div class="card-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18Z" />
+                  <path d="M3 12h18" />
+                </svg>
+              </span>
+              <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="card-body">
+              <h3 class="card-title--code">Panorays_Intel471_Censys_Dashboard_Wireframe</h3>
+              <p>Unified vendor-risk dashboard correlating Panorays, Intel 471 and Censys.</p>
+            </div>
+            <span class="card-cta">Open
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
+        </div>
+      </section>
+
+      <!-- ═══ Featured: Phishing Operations Pipeline ═══ -->
+      <section class="section" aria-labelledby="sec-pipeline">
+        <div class="section-head">
+          <span class="eyebrow">
+            <span class="kicker">Pipeline</span>
+          </span>
+          <h2 id="sec-pipeline">Phishing Simulation Workflow</h2>
+          <span class="rule" aria-hidden="true"></span>
+          <span class="count">3 stages</span>
+        </div>
+
+        <div class="pipeline-panel">
+          <div class="pipeline">
+
+            <!-- 01 -->
+            <a class="stage stage--live" href="/userbase-automation/" aria-label="Open Userbase Automation (stage 1, live)">
+              <div class="stage__top">
+                <span class="stage__num">01</span>
+                <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+              </div>
+              <span class="stage__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="12" cy="5" rx="8" ry="3" />
+                  <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+                  <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+                </svg>
+              </span>
+              <div class="stage__body">
+                <h3>Userbase Automation</h3>
+                <p>Run the DataMart userbase pipeline in the browser to build clean target lists.</p>
+              </div>
+              <span class="stage__cta">Open
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </a>
+
+            <div class="connector" aria-hidden="true">
+              <span class="track"></span>
+              <span class="arrow">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </div>
+
+            <!-- 02 -->
+            <a class="stage stage--live" href="/gophish-support/" aria-label="Open Gophish Support (stage 2, live)">
+              <div class="stage__top">
+                <span class="stage__num">02</span>
+                <span class="badge badge--live"><span class="dot" aria-hidden="true"></span>Live</span>
+              </div>
+              <span class="stage__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="5" width="18" height="12" rx="2" />
+                  <path d="m3 7 9 6 9-6" />
+                  <path d="M12 17v3a2 2 0 0 0 2 2h1.5" />
+                </svg>
+              </span>
+              <div class="stage__body">
+                <h3>Gophish Support</h3>
+                <p>Bulk-manage phishing campaigns and upload verified userbases to Gophish.</p>
+              </div>
+              <span class="stage__cta">Open
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </a>
+
+            <div class="connector connector--pending" aria-hidden="true">
+              <span class="track"></span>
+              <span class="arrow">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </div>
+
+            <!-- 03 — coming soon -->
+            <div class="stage stage--soon" role="group" aria-label="Phished User Reporting (stage 3, coming soon)" aria-disabled="true">
+              <div class="stage__top">
+                <span class="stage__num">03</span>
+                <span class="badge badge--soon"><span class="dot" aria-hidden="true"></span>Coming soon</span>
+              </div>
+              <span class="stage__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2.5 4.5 5.5v5.2c0 4.6 3.2 8.4 7.5 9.8 4.3-1.4 7.5-5.2 7.5-9.8V5.5L12 2.5Z" />
+                  <path d="M12 8.5v4" />
+                  <path d="M12 15.5h.01" />
+                </svg>
+              </span>
+              <div class="stage__body">
+                <h3>Phished User Reporting</h3>
+                <p>Triage and report employees who fell for — or reported — simulated phishing.</p>
+              </div>
+              <span class="stage__cta">In development
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              </span>
+            </div>
+
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>Security &amp; Risk Portal <span class="dot">•</span> <span class="tagline">To a Future With More Cheers</span></span>
+      <span class="mono"><span class="dot">•</span> AB InBev — Internal use only</span>
+    </footer>
+  </div>
+
+  <!-- Fixed corner mascot — stays put while scrolling -->
+  <aside class="mascot" aria-label="Friendly reminder">
+    <div class="mascot__note" role="note">
+      <b>AI is awesome</b> — but don't forget to review the outputs. 🍺
+    </div>
+    <img class="mascot__img" src="mascot.png" alt="Security shield mascot raising a beer mug" width="960" height="640" />
+  </aside>
+</body>
+</html>
