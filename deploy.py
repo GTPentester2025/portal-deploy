@@ -14,14 +14,14 @@ A single nginx site that serves a home/launcher page plus seven internal tools:
     /panorays-intel471-censys/     TPRM      → "Panorays/Intel 471/Censys wireframe"
                                               (Panorays_Intel471_Censys_Dashboard_Wireframe)
 
-Two of the tools are backends run as systemd services and reverse-proxied:
-Gophish Support (Flask/gunicorn on 5050) and Poster app (Node/Express on 4180,
-token-gated — deploy.py prints the tokenized first-visit URL).
+Three of the tools are backends run as systemd services and reverse-proxied:
+Gophish Support (Flask/gunicorn on 5050), Poster app (Node/Express on 4180,
+token-gated — deploy.py prints the tokenized first-visit URL), and Userbase
+Automation (FastAPI/uvicorn on 8765 — serves its own web/ UI plus an /api).
 
-Four of the tools are static (or SPA) files served directly by nginx. Gophish
-Support is a Flask backend: deploy.py installs it into /opt/gophish-support,
-runs it under gunicorn as a systemd service on 127.0.0.1:5000, and nginx
-reverse-proxies /gophish-support/ to it.
+The remaining tools are static (or SPA) files served directly by nginx. Each
+backend is installed into /opt/<name>, run as a systemd service bound to
+127.0.0.1, and reverse-proxied under its subpath by nginx.
 
 Layout — deploy.py + portal/ ship together (the "portal-deploy" repo); the other
 app folders are cloned as siblings. deploy.py finds each app whether it sits next
@@ -37,17 +37,19 @@ Clone the repos as siblings, then run in place (no copying):
     cd ~/apps/portal-deploy
     sudo python3 deploy.py
 
-What it does (10 steps):
+What it does (12 steps):
   1  Preflight checks (root, RHEL, project layout)
   2  Install Node.js 20 via dnf module stream (needed to build the Newsletter app)
   3  Install nginx via dnf
   4  Build the Newsletter production artifact (dist/) with npm ci + build-dist
   5  Deploy home page + static apps to /var/www/portal/
   6  Deploy Gophish Support backend (venv + gunicorn + systemd service)
-  7  Write nginx config  (/etc/nginx/conf.d/portal.conf)
-  8  Fix SELinux file context + allow nginx→backend proxy
-  9  Open port 80 in firewalld
- 10  Enable + start nginx, health-check
+  7  Deploy Poster app backend (npm + Node + systemd service)
+  8  Deploy Userbase Automation backend (venv + uvicorn + systemd service)
+  9  Write nginx config  (/etc/nginx/conf.d/portal.conf)
+ 10  Fix SELinux file context + allow nginx→backend proxy
+ 11  Open port 80 in firewalld
+ 12  Enable + start nginx, health-check
 
 Re-running is safe — all steps are idempotent.
 """
@@ -103,9 +105,15 @@ PRP_SRC = _find_dir("PRP-UAT")
 # Training Status Tracking (Awareness) — static browser-only dashboard.
 TRAINING_SRC = _find_dir("training-UAT")
 
-# Userbase Automation (Awareness) — browser-only static app; entry lives in web/.
-# Accept either the git repo name ("Userbase-Automation") or the spaced folder name.
-USERBASE_SRC = _find_dir("Userbase-Automation", "Userbase Automation")
+# Userbase Automation (Awareness) — FastAPI backend run under uvicorn + systemd.
+# It serves its own web/ UI plus an /api the UI calls. Accept either the git repo
+# name ("Userbase-Automation") or the spaced folder name.
+USERBASE_SRC     = _find_dir("Userbase-Automation", "Userbase Automation")
+USERBASE_APP_DIR = Path("/opt/userbase-automation")      # deployed code + venv
+USERBASE_VENV    = USERBASE_APP_DIR / "venv"
+USERBASE_SERVICE = Path("/etc/systemd/system/userbase-automation.service")
+USERBASE_PORT    = 8765                                   # its default (server.py)
+USERBASE_BIND    = f"127.0.0.1:{USERBASE_PORT}"
 
 # Panorays/Intel 471/Censys dashboard wireframe (TPRM) — static (index.html + support.js).
 PANORAYS_SRC = _find_dir("Panorays_Intel471_Censys_Dashboard_Wireframe")
@@ -132,7 +140,6 @@ NGINX_DEFAULT = Path("/etc/nginx/conf.d/default.conf")
 NEWSLETTER_WEB = WEB_ROOT / "newsletter"
 PRP_WEB        = WEB_ROOT / "prp-charts"
 TRAINING_WEB   = WEB_ROOT / "training-status"
-USERBASE_WEB   = WEB_ROOT / "userbase-automation"
 PANORAYS_WEB   = WEB_ROOT / "panorays-intel471-censys"
 
 # ── ANSI colours (disabled if not a tty) ─────────────────────────────────────
@@ -234,10 +241,16 @@ def check_project() -> None:
     elif not (GOPHISH_SRC / "requirements.txt").exists():
         problems.append(f"Gophish requirements.txt missing: {GOPHISH_SRC / 'requirements.txt'}")
 
-    # Userbase Automation (static, entry in web/).
-    if not (USERBASE_SRC / "web" / "index.html").exists():
+    # Userbase Automation (FastAPI backend serving web/ + /api).
+    if not (USERBASE_SRC / "server.py").exists():
+        problems.append(f"Userbase Automation app missing: {USERBASE_SRC / 'server.py'}")
+    elif not (USERBASE_SRC / "requirements.txt").exists():
         problems.append(
-            f"Userbase Automation entry missing: {USERBASE_SRC / 'web' / 'index.html'}"
+            f"Userbase requirements.txt missing: {USERBASE_SRC / 'requirements.txt'}"
+        )
+    elif not (USERBASE_SRC / "web" / "index.html").exists():
+        problems.append(
+            f"Userbase Automation UI missing: {USERBASE_SRC / 'web' / 'index.html'}"
         )
 
     # Panorays/Intel 471/Censys dashboard wireframe (static).
@@ -434,11 +447,8 @@ def deploy_files(newsletter_is_dist: bool) -> None:
     _copy_items(TRAINING_SRC, TRAINING_WEB, training_items)
     ok("Training Status Tracking deployed → /training-status/dashboard/")
 
-    # ── Userbase Automation → /userbase-automation/  (contents of web/). ──
-    #    Browser-only app; index.html references styles.css/app.js/pipeline/vendor
-    #    relatively, so the whole web/ tree maps 1:1 under the subpath.
-    _copy_tree(USERBASE_SRC / "web", USERBASE_WEB)
-    ok("Userbase Automation deployed → /userbase-automation/")
+    # ── Userbase Automation is NOT static — it is a FastAPI backend deployed
+    #    separately (deploy_userbase_backend) and reverse-proxied by nginx. ──
 
     # ── Panorays/Intel 471/Censys wireframe → /panorays-intel471-censys/ ──
     #    Self-contained static app (index.html + support.js runtime).
@@ -608,15 +618,16 @@ def _copy_poster_code() -> None:
         args = ["rsync", "-a", "--delete"]
         for name in _POSTER_EXCLUDE:
             args += ["--exclude", name]
-        # runtime state under data/ (keep data/article-seed.js and other source)
+        # runtime state under data/ (keep data/article-seed.js and other source).
+        # secrets.json + session-token are per-server — never copy or delete them.
         for pat in ("data/*.sqlite", "data/*.sqlite-shm", "data/*.sqlite-wal",
-                    "data/session-token", "image-library/assets"):
+                    "data/session-token", "data/secrets.json", "image-library/assets"):
             args += ["--exclude", pat]
         run(args + [f"{POSTER_SRC}/", f"{POSTER_APP_DIR}/"])
     else:
         ignore = shutil.ignore_patterns(*_POSTER_EXCLUDE,
                                         "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
-                                        "session-token")
+                                        "session-token", "secrets.json")
         for item in POSTER_SRC.iterdir():
             if item.name in _POSTER_EXCLUDE:
                 continue
@@ -638,12 +649,15 @@ def _seed_poster_data() -> None:
     the git-tracked snapshot in ONLY when /opt doesn't have one yet — so a new VM
     starts with the pre-generated library, an existing one keeps its live data.
     """
-    src_db = POSTER_SRC / "data" / "poster-app.sqlite"
+    # The runtime DB is git-ignored; the shipped library ships as a read-only
+    # seed (data/poster-seed.sqlite). Copy it to the runtime path only when the
+    # target has no runtime DB yet (fresh VM) so live data is never clobbered.
+    src_db = POSTER_SRC / "data" / "poster-seed.sqlite"
     dst_db = POSTER_APP_DIR / "data" / "poster-app.sqlite"
     if src_db.exists() and not dst_db.exists():
         dst_db.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_db, dst_db)
-        ok("Seeded poster library DB from repo (data/poster-app.sqlite)")
+        ok("Seeded poster library DB from repo (data/poster-seed.sqlite)")
 
     src_assets = POSTER_SRC / "image-library" / "assets"
     dst_assets = POSTER_APP_DIR / "image-library" / "assets"
@@ -739,6 +753,124 @@ def _poster_token() -> str | None:
         return tok.read_text().strip()
     except Exception:
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 6c — Userbase Automation backend (FastAPI → uvicorn → systemd)
+# ─────────────────────────────────────────────────────────────────────────────
+# Dev/venv cruft and runtime state that must NOT be copied into /opt. runs/ holds
+# every past pipeline run (uploads + per-stage snapshots) and is written at
+# runtime, so it is excluded from the redeploy mirror — redeploys never clobber it.
+_USERBASE_EXCLUDE = {
+    "venv", ".venv", "__pycache__", "tests", ".git", ".pytest_cache",
+    "runs", "input_dummy", "extracted",
+}
+
+
+def _copy_userbase_code() -> None:
+    """Mirror the app source into USERBASE_APP_DIR, excluding dev/venv/runtime cruft."""
+    USERBASE_APP_DIR.mkdir(parents=True, exist_ok=True)
+    if shutil.which("rsync"):
+        args = ["rsync", "-a", "--delete"]
+        for name in _USERBASE_EXCLUDE:
+            args += ["--exclude", name]
+        args += ["--exclude", "*.zip"]
+        run(args + [f"{USERBASE_SRC}/", f"{USERBASE_APP_DIR}/"])
+    else:
+        ignore = shutil.ignore_patterns(*_USERBASE_EXCLUDE, "*.zip")
+        for item in USERBASE_SRC.iterdir():
+            if item.name in _USERBASE_EXCLUDE:
+                continue
+            dst = USERBASE_APP_DIR / item.name
+            if item.is_dir():
+                if dst.exists():
+                    shutil.rmtree(dst)
+                shutil.copytree(item, dst, ignore=ignore)
+            else:
+                shutil.copy2(item, dst)
+
+
+def _build_userbase_venv() -> bool:
+    """Create the venv and install requirements (FastAPI, uvicorn, pandas, …)."""
+    py = shutil.which("python3") or sys.executable
+    if not USERBASE_VENV.exists():
+        info("Creating Python venv for Userbase Automation …")
+        r = run([py, "-m", "venv", str(USERBASE_VENV)], capture=True, check=False)
+        if r.returncode != 0:
+            warn("venv creation failed — is python3 + venv installed? Skipping backend.")
+            if r.stderr:
+                print(r.stderr[-1000:])
+            return False
+    venv_py = USERBASE_VENV / "bin" / "python"
+    info("Installing Python dependencies (FastAPI, uvicorn, pandas, pyarrow, …) …")
+    run([str(venv_py), "-m", "pip", "install", "--upgrade", "pip"], capture=True, check=False)
+    r = run(
+        [str(venv_py), "-m", "pip", "install", "-r", str(USERBASE_APP_DIR / "requirements.txt")],
+        capture=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        warn("pip install failed for Userbase Automation — backend will not start.")
+        if r.stderr:
+            print(r.stderr[-1500:])
+        return False
+    ok("Userbase Automation dependencies installed")
+    return True
+
+
+def _write_userbase_service() -> None:
+    uvicorn = USERBASE_VENV / "bin" / "uvicorn"
+    unit = f"""\
+# Userbase Automation — DataMart userbase pipeline (generated by deploy.py)
+[Unit]
+Description=Userbase Automation (FastAPI pipeline studio)
+After=network.target
+
+[Service]
+Type=simple
+User=nginx
+Group=nginx
+WorkingDirectory={USERBASE_APP_DIR}
+# Sync pipeline stages run in uvicorn's threadpool; uvicorn has no per-request
+# timeout, so a full run-all over lakhs of rows is never cut off mid-stage.
+ExecStart={uvicorn} server:app --host 127.0.0.1 --port {USERBASE_PORT} --workers 2
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+"""
+    USERBASE_SERVICE.write_text(unit)
+    ok(f"systemd unit written: {USERBASE_SERVICE}")
+
+
+def deploy_userbase_backend() -> bool:
+    """Deploy + (re)start the Userbase Automation service. Returns True if healthy."""
+    info(f"Deploying Userbase Automation code → {USERBASE_APP_DIR} …")
+    _copy_userbase_code()
+
+    if not _build_userbase_venv():
+        return False
+
+    # nginx user owns the tree so the app can write runs/ (uploads + snapshots).
+    run(["chown", "-R", "nginx:nginx", str(USERBASE_APP_DIR)])
+    run(["chmod", "-R", "u=rwX,go=rX", str(USERBASE_APP_DIR)])
+
+    _write_userbase_service()
+
+    run(["systemctl", "daemon-reload"])
+    run(["systemctl", "enable", "userbase-automation"], capture=True, check=False)
+    run(["systemctl", "restart", "userbase-automation"], check=False)
+
+    for _ in range(8):
+        r = run(["systemctl", "is-active", "userbase-automation"], capture=True, check=False)
+        if r.stdout.strip() == "active":
+            ok(f"Userbase Automation service running ({USERBASE_BIND})")
+            return True
+        time.sleep(1)
+    warn("Userbase Automation service did not become active.")
+    warn("Check:  journalctl -u userbase-automation -n 50")
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -859,10 +991,23 @@ server {
         proxy_send_timeout 900s;
     }
 
-    # ── Userbase Automation (Awareness) — browser-only static app ─────────────
+    # ── Userbase Automation (Awareness) — FastAPI backend via reverse proxy ───
+    #    ^~ so nginx does NOT fall through to the regex cache/deny locations; the
+    #    UI (web/) and /api both live in the app. The trailing slash on proxy_pass
+    #    strips /userbase-automation, so the backend sees /, /app.js, /api/… .
     location = /userbase-automation { return 301 /userbase-automation/; }
-    location /userbase-automation/ {
-        try_files $uri $uri/ =404;
+    location ^~ /userbase-automation/ {
+        proxy_pass http://@@USERBASE_BIND@@/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /userbase-automation;
+        client_max_body_size 512m;   # DataMart / zone Excel uploads (200k rows × 50 cols)
+        # run-all processes the whole pipeline synchronously — allow long requests.
+        proxy_read_timeout 900s;
+        proxy_send_timeout 900s;
     }
 
     # ── Poster app (Awareness) — Node service via reverse proxy ───────────────
@@ -957,6 +1102,7 @@ def configure_nginx(newsletter_is_dist: bool) -> None:
         .replace("@@CSP@@", _CSP)
         .replace("@@GOPHISH_BIND@@", GOPHISH_BIND)
         .replace("@@POSTER_BIND@@", POSTER_BIND)
+        .replace("@@USERBASE_BIND@@", USERBASE_BIND)
         .replace("@@NEWSLETTER_DENY@@\n", (deny + "\n") if deny else "")
     )
 
@@ -1055,11 +1201,13 @@ def health_check() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Success summary
 # ─────────────────────────────────────────────────────────────────────────────
-def print_success(newsletter_is_dist: bool, gophish_ok: bool, poster_ok: bool) -> None:
+def print_success(newsletter_is_dist: bool, gophish_ok: bool, poster_ok: bool,
+                  userbase_ok: bool) -> None:
     ip = _server_ip()
     label = "dist/ (production build)" if newsletter_is_dist else "source (Node.js was unavailable)"
     gophish_note = "" if gophish_ok else _c("1;33", "  (service not active — see journalctl -u gophish-support)")
     poster_note = "" if poster_ok else _c("1;33", "  (service not active — see journalctl -u poster-app)")
+    userbase_note = "" if userbase_ok else _c("1;33", "  (service not active — see journalctl -u userbase-automation)")
 
     # Poster app is token-gated — surface the tokenized first-visit URL.
     poster_token_line = ""
@@ -1084,7 +1232,7 @@ def print_success(newsletter_is_dist: bool, gophish_ok: bool, poster_ok: bool) -
     Newsletter                →  {_c('1;36', f'http://{ip}/newsletter/')}
     Training Status Tracking  →  {_c('1;36', f'http://{ip}/training-status/dashboard/')}
     Gophish Support           →  {_c('1;36', f'http://{ip}/gophish-support/')}{gophish_note}
-    Userbase Automation       →  {_c('1;36', f'http://{ip}/userbase-automation/')}
+    Userbase Automation       →  {_c('1;36', f'http://{ip}/userbase-automation/')}{userbase_note}
     Poster app                →  {_c('1;36', f'http://{ip}/poster-app/')}{poster_note}
     PRP Charts                →  {_c('1;36', f'http://{ip}/prp-charts/')}
     Panorays/Intel471/Censys  →  {_c('1;36', f'http://{ip}/panorays-intel471-censys/')}
@@ -1097,19 +1245,22 @@ def print_success(newsletter_is_dist: bool, gophish_ok: bool, poster_ok: bool) -
     systemctl status gophish-support
     systemctl status poster-app
     journalctl -u poster-app -f
+    systemctl status userbase-automation
+    journalctl -u userbase-automation -f
 
   Files:
     Web root  {WEB_ROOT}
     Config    {NGINX_CONF}
     Gophish   {GOPHISH_APP_DIR}  (service: gophish-support)
     Poster    {POSTER_APP_DIR}  (service: poster-app)
+    Userbase  {USERBASE_APP_DIR}  (service: userbase-automation)
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> None:
-    TOTAL = 11
+    TOTAL = 12
     banner("Security & Risk Portal — RHEL 9.8 Deployment Script")
 
     step(1, TOTAL, "Preflight checks")
@@ -1145,20 +1296,23 @@ def main() -> None:
     step(7, TOTAL, "Deploy Poster app backend (Node + systemd)")
     poster_ok = deploy_poster_backend(node_ok)
 
-    step(8, TOTAL, "Configure nginx")
+    step(8, TOTAL, "Deploy Userbase Automation backend (uvicorn + systemd)")
+    userbase_ok = deploy_userbase_backend()
+
+    step(9, TOTAL, "Configure nginx")
     configure_nginx(newsletter_is_dist)
 
-    step(9, TOTAL, "Fix SELinux file context")
+    step(10, TOTAL, "Fix SELinux file context")
     fix_selinux()
 
-    step(10, TOTAL, "Configure firewall")
+    step(11, TOTAL, "Configure firewall")
     configure_firewall()
 
-    step(11, TOTAL, "Start nginx + health check")
+    step(12, TOTAL, "Start nginx + health check")
     start_nginx()
     health_check()
 
-    print_success(newsletter_is_dist, gophish_ok, poster_ok)
+    print_success(newsletter_is_dist, gophish_ok, poster_ok, userbase_ok)
 
 
 if __name__ == "__main__":
